@@ -41,6 +41,13 @@ def list_entries(
     return PageResult(items=items, total=total, page=page, size=size)
 
 
+@router.get("/transform-sync")
+def transform_sync() -> dict[str, object]:
+    """结构注册跨模块同步的转换节点输出数据集视图。"""
+    items = service.list_transform_sync()
+    return {"items": items, "total": len(items)}
+
+
 @router.get("/export")
 def export_entries(
     request: Request,

@@ -1,21 +1,33 @@
-"""转换编排 DAG 拓扑接口：返回节点、连线图结构。"""
+"""转换编排 DAG 拓扑接口：返回节点、连线图结构，并承载转换执行与输出数据集管理。"""
 from __future__ import annotations
 
 import csv
 import io
-import json
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 
-from app.schemas import ActionPayload, ActionResult, EntryPayload, PageResult
+from app.schemas import ActionPayload, ActionResult, EntryPayload
 from app.services.transform_dag import TransformDagService
+from app.store import store
 
 router = APIRouter(prefix="/api/transform_dag", tags=["转换编排"])
 service = TransformDagService()
 LIST_FIELDS = ["节点编号", "输入表名", "输出表名", "转换脚本", "执行顺序", "依赖节点", "失败策略", "调度周期"]
 STATUSES = ["草稿", "待校验", "已生效", "已停用"]
+
+
+class ExecutePayload(BaseModel):
+    """执行参数：边界策略与是否开启新批次。"""
+
+    boundary: str = "wide"
+    new_batch: bool = False
+
+
+class SwitchVersionPayload(BaseModel):
+    version: str
 
 
 def csv_cell(value: Any) -> str:
@@ -29,6 +41,29 @@ def csv_cell(value: Any) -> str:
 def get_graph() -> dict[str, Any]:
     """返回节点与边组成的 DAG 图数据。"""
     return service.get_graph()
+
+
+@router.get("/outputs")
+def list_outputs() -> dict[str, Any]:
+    """转换节点输出数据集列表：依赖状态、输出批次、结构版本一页可见。"""
+    items = service.list_output_datasets()
+    return {"items": items, "total": len(items)}
+
+
+@router.get("/outputs/{output_table}/versions")
+def list_output_versions(output_table: str) -> dict[str, Any]:
+    """单个输出数据集的完整版本链，历史批次版本不丢失。"""
+    versions = service.get_output_versions(output_table)
+    if not versions:
+        raise HTTPException(status_code=404, detail=f"输出数据集 {output_table} 暂无版本")
+    return {"items": versions, "total": len(versions)}
+
+
+@router.get("/stale")
+def detect_stale() -> dict[str, Any]:
+    """残留/旧值对账：转换编排清单与结构注册详情均可据此复现根因。"""
+    items = service.detect_stale()
+    return {"items": items, "total": len(items)}
 
 
 @router.get("/export")
@@ -70,7 +105,19 @@ def run_action(entry_id: int, payload: ActionPayload) -> ActionResult:
 
 
 @router.post("/{entry_id}/execute")
-def execute_node(entry_id: int) -> dict[str, Any]:
-    """执行转换节点：消费上游表数据，写入下游表，自动生成血缘。"""
-    result = service.execute_node(entry_id)
-    return result
+def execute_node(entry_id: int, payload: ExecutePayload | None = None) -> dict[str, Any]:
+    """执行转换节点：依赖校验、输出批次、结构注册同一事务完成。"""
+    payload = payload or ExecutePayload()
+    entry = service.get_entry(entry_id)
+    if entry is None:
+        return {"ok": False, "message": f"转换节点 {entry_id} 不存在"}
+    if payload.new_batch:
+        store.set_current_batch(str(entry.get("节点编号", "")),
+                                store.next_batch_id(str(entry.get("节点编号", ""))))
+    return service.execute_node(entry_id, boundary=payload.boundary)
+
+
+@router.post("/{entry_id}/versions/switch")
+def switch_version(entry_id: int, payload: SwitchVersionPayload) -> dict[str, Any]:
+    """版本切换：沿调用链修正依赖节点结果引用。"""
+    return service.switch_output_version(entry_id, payload.version)

@@ -56,6 +56,34 @@
       </tbody>
     </table>
 
+    <h3 style="margin:18px 0 8px;">转换节点输出数据集结构同步</h3>
+    <table class="data-table" data-testid="transform-sync-table">
+      <thead>
+        <tr>
+          <th>输出数据集</th><th>来源转换节点</th><th>输出批次</th><th>输出版本</th>
+          <th>结构版本</th><th>结构状态</th><th>已确认字段</th><th>待补登记字段</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr v-for="item in transformSync" :key="item.输出数据集" :data-testid="`sync-row-${item.输出数据集}`" :data-status="String(item.结构状态)">
+          <td>{{ item.输出数据集 }}</td>
+          <td>{{ item.来源转换节点 }}</td>
+          <td>{{ item.输出批次 }}</td>
+          <td>{{ item.输出版本 }}</td>
+          <td>{{ item.结构版本 ?? '未登记' }}</td>
+          <td>
+            <span v-if="item.结构状态 === '未登记'" class="error-text">未登记（下游无法确认字段来源）</span>
+            <span v-else>{{ item.结构状态 }}</span>
+          </td>
+          <td>{{ item.已确认字段 || '—' }}</td>
+          <td>{{ item.待补登记字段 || '—' }}</td>
+        </tr>
+        <tr v-if="!transformSync.length">
+          <td colspan="8" class="empty-state">暂无转换节点输出数据集，执行转换节点后在此核对结构注册</td>
+        </tr>
+      </tbody>
+    </table>
+
     <div v-if="showCreate" class="modal-backdrop" data-testid="create-modal">
       <form class="modal" @submit.prevent="submitCreate">
         <h3>登记结构定义</h3>
@@ -94,6 +122,7 @@ const metricNames = ["结构定义总数", "待校验定义", "已生效定义"]
 
 const rows = ref<Row[]>([])
 const total = ref(0)
+const transformSync = ref<Record<string, any>[]>([])
 const errorMessage = ref('')
 const filters = ref<Record<string, string>>({})
 const filterFields = columns.slice(0, 3)
@@ -179,6 +208,9 @@ async function reload() {
     const payload = await response.json()
     rows.value = payload.items ?? []
     total.value = payload.total ?? rows.value.length
+    const syncResponse = await request(`${ENDPOINT}/transform-sync`)
+    const syncPayload = await syncResponse.json()
+    transformSync.value = syncPayload.items ?? []
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '结构注册列表读取失败'
   }

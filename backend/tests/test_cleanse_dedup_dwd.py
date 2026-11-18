@@ -19,6 +19,10 @@ def reset_store():
     store._tables = {name: [dict(row) for row in rows] for name, rows in SEED_ROWS.items()}
     store._table_data.clear()
     store._versions.clear()
+    store._transform_outputs.clear()
+    store._transform_batches.clear()
+    store._batch_seq.clear()
+    store._schema_sync_index.clear()
     store._lineage_edges.clear()
     store._quality_results.clear()
     store._snapshot_data.clear()

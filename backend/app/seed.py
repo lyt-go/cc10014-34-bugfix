@@ -241,6 +241,10 @@ SEED_ROWS: dict[str, list[dict[str, Any]]] = {
          "节点编号": "TRAN-USR-001", "输入表名": "dwd_user_detail", "输出表名": "dws_user_daily",
          "转换脚本": "SELECT dt,user_level,COUNT(*) FROM dwd_user_detail GROUP BY dt,user_level",
          "执行顺序": "1", "依赖节点": "", "失败策略": "重试3次", "调度周期": "日"},
+        {"id": 4, "status": "已生效", "pending": False, "abnormal": False,
+         "节点编号": "TRAN-ORD-002", "输入表名": "dws_order_daily", "输出表名": "ads_order_summary",
+         "转换脚本": "SELECT order_status,COUNT(order_amount_agg) FROM dws_order_daily GROUP BY order_status",
+         "执行顺序": "2", "依赖节点": "TRAN-ORD-001", "失败策略": "阻断下游", "调度周期": "日"},
     ],
     "cold_archive": [
         {"id": 1, "status": "已生效", "pending": False, "abnormal": False,
